@@ -1,6 +1,6 @@
 # Whisper API Proxy
 
-This project provides a (OpenAI compatible) proxy API for audio transcriptions, allowing clients to transcribe audio files using either a local Whisper WebUI service or the OpenAI Whisper API.
+This project provides a (OpenAI compatible) proxy API for audio transcriptions, allowing clients to transcribe audio files using either the great local [Whisper WebUI](https://github.com/jhj0517/Whisper-WebUI) service of @jhj0517 or the OpenAI Whisper API.
 
 ## Features
 
