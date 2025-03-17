@@ -32,7 +32,7 @@ The project is configured using the `config.py` file. This file contains setting
 ## Usage
 
 1.  Create a `config.py` file with the appropriate settings, see `config.example.py`
-2.  Start the FastAPI application: `uvicorn whisper_api_proxy:app --host 0.0.0.0 --port 5431`
+2.  Start the FastAPI application: `uvicorn whisper_api_proxy:app --host 0.0.0.0 --port 5431` (`.venv/bin/uvicorn` with venv)
 3.  Send a POST request to the `http://yourserver.local:5431/v1/audio/transcriptions` endpoint with the audio file and API key (same as OpenAI Whisper API)
 
 ## Dependencies
@@ -47,7 +47,7 @@ The project is configured using the `config.py` file. This file contains setting
 Install dependencies using:
 
 ```bash
-python3 -m venv .venv; source .venv/bin/activate
+python3 -m venv .venv; source .venv/bin/activate # optional venv
 pip install -r requirements.txt
 ```
 
