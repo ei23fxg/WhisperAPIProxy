@@ -32,8 +32,8 @@ The project is configured using the `config.py` file. This file contains setting
 ## Usage
 
 1.  Create a `config.py` file with the appropriate settings, see `config.example.py`
-2.  Start the Flask application: `python whisper_api_proxy.py`
-3.  Send a POST request to the `/v1/audio/transcriptions` endpoint with the audio file and API key.
+2.  Start the Flask application: `.venv/bin/python3 whisper_api_proxy.py`
+3.  Send a POST request to the `http://yourserver.local:5431/v1/audio/transcriptions` endpoint with the audio file and API key (same as OpenAI Whisper API)
 
 ## Dependencies
 
@@ -45,6 +45,7 @@ The project is configured using the `config.py` file. This file contains setting
 Install dependencies using:
 
 ```bash
+python3 -m venv .venv; source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
