@@ -15,7 +15,7 @@ This project provides a (OpenAI compatible) proxy API for audio transcriptions, 
 
 The project is configured using the `config.py` file. This file contains settings for:
 
-*   `whisper_webui_host`: The host address of the local Whisper WebUI service.
+*   `whisper_webui_host`: The host address of the local [Whisper WebUI](https://github.com/jhj0517/Whisper-WebUI) service.
 *   `openai_api_key`: The API key for the OpenAI API.
 *   `api_clients`: A dictionary of API clients, with each client identified by a unique ID and configured with an API key and a flag to enable/disable saving recordings.
 
