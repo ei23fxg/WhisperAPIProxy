@@ -25,21 +25,24 @@ The project is configured using the `config.py` file. This file contains setting
 
 *   **Method:** POST
 *   **Headers:**
-    *   `Authorization`: Bearer <API\_KEY>
+    *   `Authorization`: Bearer <API_KEY>
 *   **Body:**
-    *   `file`: The audio file to transcribe.
+    *   `file`: The audio file to transcribe (as a file upload).
 
 ## Usage
 
 1.  Create a `config.py` file with the appropriate settings, see `config.example.py`
-2.  Start the Flask application: `.venv/bin/python3 whisper_api_proxy.py`
+2.  Start the FastAPI application: `uvicorn whisper_api_proxy:app --host 0.0.0.0 --port 5431`
 3.  Send a POST request to the `http://yourserver.local:5431/v1/audio/transcriptions` endpoint with the audio file and API key (same as OpenAI Whisper API)
 
 ## Dependencies
 
-*   Flask
+*   FastAPI
+*   gradio_client
+*   python-multipart
 *   requests
-*   gradio\_client
+*   Uvicorn
+
 
 Install dependencies using:
 

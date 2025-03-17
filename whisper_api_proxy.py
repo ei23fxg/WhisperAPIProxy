@@ -1,12 +1,15 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import config
 import os
 import requests
 import threading
 import time
 from gradio_client import Client, handle_file
+from typing import Optional
 
-app = Flask(__name__)
+app = FastAPI()
 
 # Script directory and fixed filename for the audio file
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -62,32 +65,37 @@ def transcribe_with_openai(audio_file):
         print(f"Error with OpenAI API: {e}")
         return None
 
-# API endpoint for audio transcriptions
-@app.route('/v1/audio/transcriptions', methods=['POST'])
-def transcribe_audio():
-    # Check authentication
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Unauthorized"}), 401
+# Security scheme
+bearer_scheme = HTTPBearer()
 
-    api_key = auth_header[7:]  # Entferne "Bearer "
+async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    api_key = credentials.credentials
     client_id = None
     for client_id, client_config in config.api_clients.items():
         if client_config["api_key"] == api_key:
-            save_recordings = client_config["save_recordings"]
-            break
-    else:
-        return jsonify({"error": "Unauthorized"}), 401
+            return client_id, client_config["save_recordings"]
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid API Key",
+    )
+
+# API endpoint for audio transcriptions
+@app.post('/v1/audio/transcriptions')
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    client_data: tuple = Depends(verify_api_key)
+):
+    client_id, save_recordings = client_data
 
     # Check audio file
-    if 'file' not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-    file = request.files['file']
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
     if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+        raise HTTPException(status_code=400, detail="No selected file")
 
     # Save audio file
-    file.save(AUDIO_FILE_NAME)
+    with open(AUDIO_FILE_NAME, "wb") as f:
+        f.write(await file.read())
 
     # Create the "recordings" folder if it doesn't exist
     recordings_dir = "recordings"
@@ -125,7 +133,7 @@ def transcribe_audio():
                 text_file_path = os.path.join(recordings_dir, f"{filename}.txt")
                 with open(text_file_path, "w") as text_file:
                     text_file.write(transcription)
-            return jsonify({"text": transcription})
+            return JSONResponse({"text": transcription})
         else:
             # Fallback zu OpenAI
             transcription = transcribe_with_openai(AUDIO_FILE_NAME)
@@ -135,8 +143,8 @@ def transcribe_audio():
                     text_file_path = os.path.join(recordings_dir, f"{filename}.txt")
                     with open(text_file_path, "w") as text_file:
                         text_file.write(transcription)
-                return jsonify({"text": transcription})
-            return jsonify({"error": "Transcription failed"}), 500
+                return JSONResponse({"text": transcription})
+            raise HTTPException(status_code=500, detail="Transcription failed")
     else:
         # Local service not available, use OpenAI
         transcription = transcribe_with_openai(AUDIO_FILE_NAME)
@@ -146,8 +154,8 @@ def transcribe_audio():
                 text_file_path = os.path.join(recordings_dir, f"{filename}.txt")
                 with open(text_file_path, "w") as text_file:
                     text_file.write(transcription)
-            return jsonify({"text": transcription})
-        return jsonify({"error": "Transcription failed"}), 500
+            return JSONResponse({"text": transcription})
+        raise HTTPException(status_code=500, detail="Transcription failed")
 
     # Calculate the usage time
     audio_duration = 0
@@ -164,19 +172,19 @@ def transcribe_audio():
     if local_service_available:
         transcription = get_transcript(AUDIO_FILE_NAME)
         if transcription:
-            return jsonify({"text": transcription})
+            return JSONResponse({"text": transcription})
         else:
             # Fallback to OpenAI
             transcription = transcribe_with_openai(AUDIO_FILE_NAME)
             if transcription:
-                return jsonify({"text": transcription})
-            return jsonify({"error": "Transcription failed"}), 500
+                return JSONResponse({"text": transcription})
+            raise HTTPException(status_code=500, detail="Transcription failed")
     else:
         # Local service not available, use OpenAI
         transcription = transcribe_with_openai(AUDIO_FILE_NAME)
         if transcription:
-            return jsonify({"text": transcription})
-        return jsonify({"error": "Transcription failed"}), 500
+            return JSONResponse({"text": transcription})
+        raise HTTPException(status_code=500, detail="Transcription failed")
 
 # Function to log API usage
 def log_usage(client_id, duration, api_type):
@@ -227,7 +235,3 @@ def log_usage(client_id, duration, api_type):
             log_file.truncate(0)
             log_file.writelines(lines)
             log_file.write(f"{today};{local_api_usage};{openai_api_usage}\n")
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5431)
