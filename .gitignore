@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+client_logs/
+recordings/
+api_tmp.wav
+config.py
