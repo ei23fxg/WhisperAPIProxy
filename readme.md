@@ -40,7 +40,6 @@ The project is configured using the `config.py` file. This file contains setting
 *   Flask
 *   requests
 *   gradio\_client
-*   python-dotenv
 
 Install dependencies using:
 
