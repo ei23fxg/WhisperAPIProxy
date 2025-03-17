@@ -46,7 +46,7 @@ def get_transcript(audiofile):
 
 # Function for transcription with the OpenAI API
 def transcribe_with_openai(audio_file):
-    url = "https://api.openai.com/v1/audio/transcriptions"
+    url = config.openai_api_url
     headers = {"Authorization": f"Bearer {config.openai_api_key}"}
     files = {"file": ("audio.wav", open(audio_file, "rb"), "audio/wav")}
     data = {"model": "whisper-1"}

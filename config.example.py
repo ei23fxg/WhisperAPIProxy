@@ -2,6 +2,8 @@ whisper_webui_host = "http://localhost:7860/"
 
 # OpenAI API key (hardcoded)
 openai_api_key = "sk-proj-XXXXXXXXXXXXXXXXXXx"  # Place your API KEY here
+# OpenAI WHISPER API URL
+openai_api_url = "https://api.openai.com/v1/audio/transcriptions"
 
 # API Clients
 api_clients = {
