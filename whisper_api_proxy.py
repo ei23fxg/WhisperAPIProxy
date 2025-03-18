@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydub import AudioSegment
 import config
 import os
 import requests
@@ -65,6 +66,11 @@ def transcribe_with_openai(audio_file):
         print(f"Error with OpenAI API: {e}")
         return None
 
+def get_audio_duration(file_path):
+    audio = AudioSegment.from_file(file_path)
+    duration_in_seconds = len(audio) / 1000.0
+    return duration_in_seconds
+
 # Security scheme
 bearer_scheme = HTTPBearer()
 
@@ -73,7 +79,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(bea
     client_id = None
     for client_id, client_config in config.api_clients.items():
         if client_config["api_key"] == api_key:
-            return client_id, client_config["save_recordings"]
+            return client_id, client_config["save_recordings"], client_config["allow_openai"]
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API Key",
@@ -85,7 +91,7 @@ async def transcribe_audio(
     file: UploadFile = File(...),
     client_data: tuple = Depends(verify_api_key)
 ):
-    client_id, save_recordings = client_data
+    client_id, save_recordings, allow_openai = client_data
 
     # Check audio file
     if not file:
@@ -113,18 +119,12 @@ async def transcribe_audio(
         os.system(command)
 
     # Calculate the usage time
-    audio_duration = 0
-    # Here the actual duration of the audio file should be calculated.
-    # Since I don't have access to a library for audio analysis,
-    # I use a dummy calculation based on the file size.
-    file_size_kb = os.path.getsize(AUDIO_FILE_NAME) / 1024
-    audio_duration = file_size_kb * 0.1  # Dummy calculation: 100ms per KB
+    audio_duration = get_audio_duration(AUDIO_FILE_NAME)
 
     # Log the usage
     log_usage(client_id, audio_duration, "openai" if not local_service_available else "local")
 
     # Decide which service to use
-
     if local_service_available:
         transcription = get_transcript(AUDIO_FILE_NAME)
         if transcription:
@@ -136,6 +136,24 @@ async def transcribe_audio(
             return JSONResponse({"text": transcription})
         else:
             # Fallback zu OpenAI
+            if allow_openai:
+                transcription = transcribe_with_openai(AUDIO_FILE_NAME)
+                if transcription:
+                    if save_recordings:
+                        # Save the transcription
+                        text_file_path = os.path.join(recordings_dir, f"{filename}.txt")
+                        with open(text_file_path, "w") as text_file:
+                            text_file.write(transcription)
+                    return JSONResponse({"text": transcription})
+                raise HTTPException(status_code=500, detail="Transcription failed")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="OpenAI API usage is forbidden for this client",
+                )
+    else:
+        # Local service not available, use OpenAI
+        if allow_openai:
             transcription = transcribe_with_openai(AUDIO_FILE_NAME)
             if transcription:
                 if save_recordings:
@@ -145,46 +163,11 @@ async def transcribe_audio(
                         text_file.write(transcription)
                 return JSONResponse({"text": transcription})
             raise HTTPException(status_code=500, detail="Transcription failed")
-    else:
-        # Local service not available, use OpenAI
-        transcription = transcribe_with_openai(AUDIO_FILE_NAME)
-        if transcription:
-            if save_recordings:
-                # Save the transcription
-                text_file_path = os.path.join(recordings_dir, f"{filename}.txt")
-                with open(text_file_path, "w") as text_file:
-                    text_file.write(transcription)
-            return JSONResponse({"text": transcription})
-        raise HTTPException(status_code=500, detail="Transcription failed")
-
-    # Calculate the usage time
-    audio_duration = 0
-    # Here the actual duration of the audio file should be calculated.
-    # Since I don't have access to a library for audio analysis,
-    # I use a dummy calculation based on the file size.
-    file_size_kb = os.path.getsize(AUDIO_FILE_NAME) / 1024
-    audio_duration = file_size_kb * 0.1  # Dummy-Berechnung: 100ms pro KB
-
-    # Log the usage
-    log_usage(client_id, audio_duration, "openai" if not local_service_available else "local")
-
-    # Decice which service to use
-    if local_service_available:
-        transcription = get_transcript(AUDIO_FILE_NAME)
-        if transcription:
-            return JSONResponse({"text": transcription})
         else:
-            # Fallback to OpenAI
-            transcription = transcribe_with_openai(AUDIO_FILE_NAME)
-            if transcription:
-                return JSONResponse({"text": transcription})
-            raise HTTPException(status_code=500, detail="Transcription failed")
-    else:
-        # Local service not available, use OpenAI
-        transcription = transcribe_with_openai(AUDIO_FILE_NAME)
-        if transcription:
-            return JSONResponse({"text": transcription})
-        raise HTTPException(status_code=500, detail="Transcription failed")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="OpenAI API usage is forbidden for this client",
+            )
 
 # Function to log API usage
 def log_usage(client_id, duration, api_type):
@@ -235,3 +218,41 @@ def log_usage(client_id, duration, api_type):
             log_file.truncate(0)
             log_file.writelines(lines)
             log_file.write(f"{today};{local_api_usage};{openai_api_usage}\n")
+
+@app.get("/usage")
+async def get_usage_data():
+    """
+    Returns the API usage data for all clients for the current day.
+    """
+    today = time.strftime("%Y-%m-%d")
+    usage_data = {}
+    log_dir = "client_logs"
+
+    if not os.path.exists(log_dir):
+        return JSONResponse(content={"message": "No usage data available"}, status_code=404)
+
+    for filename in os.listdir(log_dir):
+        if filename.endswith(".log"):
+            client_id = filename[:-4]  # Remove ".log" extension
+            log_file_path = os.path.join(log_dir, filename)
+
+            try:
+                with open(log_file_path, "r") as log_file:
+                    lines = log_file.readlines()
+                    if len(lines) > 1:
+                        last_line = lines[-1].strip().split(";")
+                        if last_line[0] == today:
+                            local_api_usage = int(last_line[1])
+                            openai_api_usage = int(last_line[2])
+                            usage_data[client_id] = {
+                                "local_api_usage": local_api_usage,
+                                "openai_api_usage": openai_api_usage,
+                            }
+            except Exception as e:
+                print(f"Error reading log file {filename}: {e}")
+                # Consider logging the error or returning a specific error message
+
+    if not usage_data:
+        return JSONResponse(content={"message": "No usage data for today"}, status_code=404)
+
+    return JSONResponse(content=usage_data)

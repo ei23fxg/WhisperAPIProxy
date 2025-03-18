@@ -8,6 +8,8 @@ This project provides a (OpenAI compatible) proxy API for audio transcriptions, 
 *   **Local Service Check:** Periodically checks the availability of the local Whisper WebUI service.
 *   **API Key Authentication:** Authenticates clients using API keys.
 *   **Usage Logging:** Logs API usage by client, tracking usage of both the local API and the OpenAI API.
+*   **Client-specific OpenAI API Usage Control:** Allows disabling OpenAI API usage for individual clients.
+*   **Usage Endpoint:** Provides a `/usage` endpoint to query daily API usage for each client.
 *   **Audio Recording:** Saves audio recordings to the `recordings` directory (if enabled in the client configuration).
 *   **Opus Conversion:** Converts audio files to Opus format for storage.
 
@@ -39,6 +41,7 @@ The project is configured using the `config.py` file. This file contains setting
 
 *   FastAPI
 *   gradio_client
+*   pydub
 *   python-multipart
 *   requests
 *   Uvicorn

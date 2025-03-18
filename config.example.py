@@ -5,11 +5,11 @@ openai_api_key = "sk-proj-XXXXXXXXXXXXXXXXXXx"  # Place your API KEY here
 # OpenAI WHISPER API URL
 openai_api_url = "https://api.openai.com/v1/audio/transcriptions"
 
-# API Clients
+# API Clients - you can disable
 api_clients = {
-    "felix_test": {"api_key": "sk-1234felix", "save_recordings": False},
-    "alice456": {"api_key": "sk-client-alice456", "save_recordings": True},
-    "charlie789": {"api_key": "sk-client-charlie789", "save_recordings": False},
+    "felix_test": {"api_key": "sk-1234felix", "save_recordings": True, "allow_openai": True},
+    "alice456": {"api_key": "sk-client-alice456", "save_recordings": True, "allow_openai": False},
+    "charlie789": {"api_key": "sk-client-charlie789", "save_recordings": False, "allow_openai": True},
 }
 
 # Whisper predict configuration - you may need to change something for yourself here
