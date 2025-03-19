@@ -154,6 +154,7 @@ async def transcribe_audio(
         # Local service not available, use OpenAI
         if allow_openai:
             transcription = transcribe_with_openai(AUDIO_FILE_NAME)
+            log_usage(client_id, audio_duration, "openai")
             if transcription:
                 if save_recordings:
                     # Save the transcription
