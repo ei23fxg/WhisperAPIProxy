@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydub import AudioSegment
@@ -34,11 +34,16 @@ def check_local_service():
 threading.Thread(target=check_local_service, daemon=True).start()
 
 # Function for transcription with the local service
-def get_transcript(audiofile):
+def get_transcript(audiofile, srt_format: bool):
     try:
         client = Client(config.whisper_webui_host)
-        predict_config = config.whisper_predict_config
+        # Make a copy to avoid modifying the global config dict directly
+        predict_config = config.whisper_predict_config.copy()
         predict_config["files"] = [handle_file(audiofile)]
+        if srt_format:
+            predict_config["file_format"] = "SRT"
+        else:
+            predict_config["file_format"] = "txt"
         result = client.predict(**predict_config)
         transcript_content = result[0]
         if len(transcript_content.split('\n')) > 5:
@@ -49,11 +54,11 @@ def get_transcript(audiofile):
         return None
 
 # Function for transcription with the OpenAI API
-def transcribe_with_openai(audio_file):
+def transcribe_with_openai(audio_file, srt_format: bool, model: str):
     url = config.openai_api_url
     headers = {"Authorization": f"Bearer {config.openai_api_key}"}
     files = {"file": ("audio.wav", open(audio_file, "rb"), "audio/wav")}
-    data = {"model": "whisper-1"}
+    data = {"model": model, "srt_format": srt_format}
 
     try:
         response = requests.post(url, headers=headers, files=files, data=data)
@@ -89,6 +94,8 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(bea
 @app.post('/v1/audio/transcriptions')
 async def transcribe_audio(
     file: UploadFile = File(...),
+    srt_format: bool = Form(False),
+    # model: str = Form("whisper-1"), # default Model
     client_data: tuple = Depends(verify_api_key)
 ):
     client_id, save_recordings, allow_openai = client_data
@@ -123,7 +130,7 @@ async def transcribe_audio(
 
     # Decide which service to use
     if local_service_available:
-        transcription = get_transcript(AUDIO_FILE_NAME)
+        transcription = get_transcript(AUDIO_FILE_NAME, srt_format)
         log_usage(client_id, audio_duration, "local")
         if transcription:
             if save_recordings:
@@ -135,7 +142,7 @@ async def transcribe_audio(
         else:
             # Fallback zu OpenAI
             if allow_openai:
-                transcription = transcribe_with_openai(AUDIO_FILE_NAME)
+                transcription = transcribe_with_openai(AUDIO_FILE_NAME, srt_format, model)
                 log_usage(client_id, audio_duration, "openai")
                 if transcription:
                     if save_recordings:
@@ -153,7 +160,7 @@ async def transcribe_audio(
     else:
         # Local service not available, use OpenAI
         if allow_openai:
-            transcription = transcribe_with_openai(AUDIO_FILE_NAME)
+            transcription = transcribe_with_openai(AUDIO_FILE_NAME, srt_format, model)
             log_usage(client_id, audio_duration, "openai")
             if transcription:
                 if save_recordings:
