@@ -4,3 +4,4 @@ client_logs/
 recordings/
 api_tmp.wav
 config.py
+error.log

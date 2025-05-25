@@ -10,6 +10,18 @@ import time
 from gradio_client import Client, handle_file
 from typing import Optional
 
+ERROR_LOG_FILE = "error.log"
+
+def log_error(client_id: str, error_message: str):
+    """Logs an error message with timestamp and client ID to the error log file."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    error_message = error_message.replace("\n"," ")
+    log_entry = f"[{timestamp}] - Client: {client_id} - Error: {error_message}\n"
+    try:
+        with open(ERROR_LOG_FILE, "a") as f:
+            f.write(log_entry)
+    except Exception as e:
+        print(f"Failed to write to error log: {e}")
 app = FastAPI()
 
 # Script directory and fixed filename for the audio file
@@ -54,7 +66,7 @@ def get_transcript(audiofile, srt_format: bool):
         return None
 
 # Function for transcription with the OpenAI API
-def transcribe_with_openai(audio_file, model: str):
+def transcribe_with_openai(audio_file, model: str, client_id: str):
     url = config.openai_api_url
     headers = {"Authorization": f"Bearer {config.openai_api_key}"}
     files = {"file": ("audio.wav", open(audio_file, "rb"), "audio/wav")}
@@ -66,8 +78,10 @@ def transcribe_with_openai(audio_file, model: str):
             return response.json().get("text", "No transcription received.")
         else:
             print(f"OpenAI API Error: {response.status_code}, {response.text}")
+            log_error(client_id, f"OpenAI API Error: {response.status_code}, {response.text}")
             return None
     except requests.RequestException as e:
+        log_error(client_id, f"Error with OpenAI API: {e}")
         print(f"Error with OpenAI API: {e}")
         return None
 
@@ -81,10 +95,15 @@ bearer_scheme = HTTPBearer()
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     api_key = credentials.credentials
-    client_id = None
-    for client_id, client_config in config.api_clients.items():
+    # Iterate through api_clients to find a match for the provided api_key
+    for c_id, client_config in config.api_clients.items():
         if client_config["api_key"] == api_key:
-            return client_id, client_config["save_recordings"], client_config["allow_openai"]
+            return c_id, client_config["save_recordings"], client_config["allow_openai"]
+    # If no match is found, log the error and raise HTTPException
+    # Note: We don't have a client_id here if the key is invalid.
+    # We could log the attempted key, but that might be a security risk.
+    # For now, we'll log with a generic "UNKNOWN_CLIENT".
+    log_error("UNKNOWN_CLIENT", f"Invalid API Key attempt: {api_key[:10]}...") # Log part of the key for tracing
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API Key",
@@ -102,8 +121,10 @@ async def transcribe_audio(
 
     # Check audio file
     if not file:
+        log_error(client_id, "No file provided")
         raise HTTPException(status_code=400, detail="No file provided")
     if file.filename == '':
+        log_error(client_id, "No selected file")
         raise HTTPException(status_code=400, detail="No selected file")
 
     # Save audio file
@@ -142,7 +163,7 @@ async def transcribe_audio(
         else:
             # Fallback zu OpenAI
             if allow_openai:
-                transcription = transcribe_with_openai(AUDIO_FILE_NAME, model)
+                transcription = transcribe_with_openai(AUDIO_FILE_NAME, model, client_id)
                 log_usage(client_id, audio_duration, "openai")
                 if transcription:
                     if save_recordings:
@@ -151,8 +172,10 @@ async def transcribe_audio(
                         with open(text_file_path, "w") as text_file:
                             text_file.write(transcription)
                     return JSONResponse({"text": transcription})
+                log_error(client_id, "Transcription failed with OpenAI after local fallback.")
                 raise HTTPException(status_code=500, detail="Transcription failed")
             else:
+                log_error(client_id, "OpenAI API usage is forbidden for this client after local fallback.")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="OpenAI API usage is forbidden for this client",
@@ -160,7 +183,7 @@ async def transcribe_audio(
     else:
         # Local service not available, use OpenAI
         if allow_openai:
-            transcription = transcribe_with_openai(AUDIO_FILE_NAME, model)
+            transcription = transcribe_with_openai(AUDIO_FILE_NAME, model, client_id)
             log_usage(client_id, audio_duration, "openai")
             if transcription:
                 if save_recordings:
@@ -169,8 +192,10 @@ async def transcribe_audio(
                     with open(text_file_path, "w") as text_file:
                         text_file.write(transcription)
                 return JSONResponse({"text": transcription})
+            log_error(client_id, "Transcription failed with OpenAI (local service unavailable).")
             raise HTTPException(status_code=500, detail="Transcription failed")
         else:
+            log_error(client_id, "OpenAI API usage is forbidden for this client (local service unavailable).")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="OpenAI API usage is forbidden for this client",
@@ -206,7 +231,8 @@ def log_usage(client_id, duration, api_type):
     except FileNotFoundError:
         pass  # File was already created above, if it doesn't exist
     except Exception as e:
-        print(f"Error reading the log file: {e}")
+        print(f"Error reading the log file {log_file_path}: {e}")
+        log_error(client_id, f"Error reading client log file {log_file_path}: {e}")
 
     # update user logs
     if api_type == "local":
@@ -267,11 +293,11 @@ async def get_usage_data():
                             openai_api_usage = int(last_line[2])
                             usage_data[client_id] = {
                                 "local_api_usage": local_api_usage,
-                                "openai_api_usage": openai_api_usage,
+                                "openai_api_usage": openai_api_usage
                             }
             except Exception as e:
                 print(f"Error reading log file {filename}: {e}")
-                # Consider logging the error or returning a specific error message
+                log_error(client_id if 'client_id' in locals() else "SYSTEM", f"Error reading usage log file {filename}: {e}")
 
     if not usage_data:
         return JSONResponse(content={"message": "No usage data for today"}, status_code=404)
