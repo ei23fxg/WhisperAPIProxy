@@ -54,11 +54,11 @@ def get_transcript(audiofile, srt_format: bool):
         return None
 
 # Function for transcription with the OpenAI API
-def transcribe_with_openai(audio_file, srt_format: bool, model: str):
+def transcribe_with_openai(audio_file, model: str):
     url = config.openai_api_url
     headers = {"Authorization": f"Bearer {config.openai_api_key}"}
     files = {"file": ("audio.wav", open(audio_file, "rb"), "audio/wav")}
-    data = {"model": model, "srt_format": srt_format}
+    data = {"model": model}
 
     try:
         response = requests.post(url, headers=headers, files=files, data=data)
@@ -142,7 +142,7 @@ async def transcribe_audio(
         else:
             # Fallback zu OpenAI
             if allow_openai:
-                transcription = transcribe_with_openai(AUDIO_FILE_NAME, srt_format, model)
+                transcription = transcribe_with_openai(AUDIO_FILE_NAME, model)
                 log_usage(client_id, audio_duration, "openai")
                 if transcription:
                     if save_recordings:
@@ -160,7 +160,7 @@ async def transcribe_audio(
     else:
         # Local service not available, use OpenAI
         if allow_openai:
-            transcription = transcribe_with_openai(AUDIO_FILE_NAME, srt_format, model)
+            transcription = transcribe_with_openai(AUDIO_FILE_NAME, model)
             log_usage(client_id, audio_duration, "openai")
             if transcription:
                 if save_recordings:
