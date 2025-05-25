@@ -95,7 +95,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(bea
 async def transcribe_audio(
     file: UploadFile = File(...),
     srt_format: bool = Form(False),
-    # model: str = Form("whisper-1"), # default Model
+    model: str = Form("whisper-1"),
     client_data: tuple = Depends(verify_api_key)
 ):
     client_id, save_recordings, allow_openai = client_data
@@ -226,6 +226,20 @@ def log_usage(client_id, duration, api_type):
             log_file.writelines(lines)
             log_file.write(f"{today};{local_api_usage};{openai_api_usage}\n")
 
+@app.get("/v1/local_service_status")
+async def get_local_service_status(client_data: tuple = Depends(verify_api_key)):
+    """
+    Checks and returns the availability status of the local transcription service.
+    Requires a valid API key.
+    """
+    # The verify_api_key dependency already handles authentication.
+    # If the key is invalid, it will raise an HTTPException.
+    # We just need to return the status of local_service_available.
+    if local_service_available:
+        return JSONResponse(content={"status": "available", "message": "Local transcription service is available."})
+    else:
+        return JSONResponse(content={"status": "unavailable", "message": "Local transcription service is currently unavailable."})
+    
 @app.get("/usage")
 async def get_usage_data():
     """
