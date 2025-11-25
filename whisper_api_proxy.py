@@ -97,8 +97,11 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(bea
     api_key = credentials.credentials
     # Iterate through api_clients to find a match for the provided api_key
     for c_id, client_config in config.api_clients.items():
-        if client_config["api_key"] == api_key:
-            return c_id, client_config["save_recordings"], client_config["allow_openai"]
+        if client_config.get("api_key") == api_key:
+            save_recordings = client_config.get("save_recordings", False)
+            allow_openai = client_config.get("allow_openai", False)
+            daily_quota = client_config.get("daily_quota")  # None means unlimited
+            return c_id, save_recordings, allow_openai, daily_quota
     # If no match is found, log the error and raise HTTPException
     # Note: We don't have a client_id here if the key is invalid.
     # We could log the attempted key, but that might be a security risk.
@@ -117,7 +120,7 @@ async def transcribe_audio(
     model: str = Form("whisper-1"),
     client_data: tuple = Depends(verify_api_key)
 ):
-    client_id, save_recordings, allow_openai = client_data
+    client_id, save_recordings, allow_openai, daily_quota = client_data
 
     # Check audio file
     if not file:
@@ -148,6 +151,21 @@ async def transcribe_audio(
 
     # Calculate the usage time
     audio_duration = get_audio_duration(AUDIO_FILE_NAME)
+
+    # Check daily quota (None means unlimited, 0 means no quota)
+    if daily_quota is not None and daily_quota == 0:
+        # Convert the audio file to Opus format and save it (if enabled)
+        if save_recordings:
+            opus_file_path = os.path.join(recordings_dir, f"{filename}.opus")
+            command = f"ffmpeg -y -i {AUDIO_FILE_NAME} -c:a libopus -b:a 20k -ac 1 {opus_file_path}"
+            os.system(command)
+        
+        # Return the response directly without transcription
+        # Return the filename instead of "Aufnahme gespeichert"
+        if save_recordings:
+            return JSONResponse({"text": f"{filename}.opus"})
+        else:
+            return JSONResponse({"text": f"{filename}.txt"})
 
     # Decide which service to use
     if local_service_available:
