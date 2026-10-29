@@ -1,14 +1,14 @@
-# Whisper-API-Proxy als Vorlage für das ei23 DIY Smart Home
+# Whisper API Proxy as a template for the ei23 DIY Smart Home
 # https://github.com/ei23com/diy-smart-home
 #
-# Diese Datei ist ein Ausschnitt (kein vollständiges Compose-Projekt). Den
-# Block unter `services:` in ~/ei23-docker/docker-compose.yml einfügen, also
-# eingerückt direkt hinter die Zeile `services:`.
+# This file is a snippet (not a complete compose project). Add the block under
+# `services:` in ~/ei23-docker/docker-compose.yml, i.e. indented directly after
+# the `services:` line.
 #
-# Die Pfade sind relativ zu ~/ei23-docker. Beim ersten Start legt der Container
-# ./volumes/whisper-proxy/config/config.py selbst an (aus config.example.py).
-# Danach API-Keys/Clients anpassen und `ei23 dc` bzw. `docker compose up -d`
-# ausführen.
+# The paths are relative to ~/ei23-docker. On first start the container creates
+# ./volumes/whisper-proxy/config/config.py itself (from config.example.py).
+# After that, adjust API keys/clients and run `ei23 dc` or
+# `docker compose up -d`.
 
   whisper-proxy:
     image: ghcr.io/ei23fxg/whisperapiproxy
@@ -19,9 +19,9 @@
     environment:
       NEEDLE_TELEMETRY: "0"
       TZ: Europe/Berlin
-      # Verzeichnis-Mount: der Container schreibt die config.py beim ersten
-      # Start selbst. Ein Datei-Mount auf eine fehlende config.py legt Docker
-      # als Verzeichnis an und der Start schlägt fehl.
+      # Directory mount: the container writes config.py itself on first start.
+      # Docker creates a directory for a file mount whose source is missing,
+      # which would break the container start.
       CONFIG_PATH: /app/config/config.py
     volumes:
       - ./volumes/whisper-proxy/config:/app/config
