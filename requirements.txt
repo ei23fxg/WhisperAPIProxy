@@ -25,3 +25,10 @@ typing_extensions==4.12.2
 urllib3==2.3.0
 uvicorn==0.34.0
 websockets==15.0.1
+audioop-lts; python_version >= "3.13"
+pydub
+# lokaler CPU-Fallback (optional, aber empfohlen)
+cactus-needle[mic]
+# lokale Fallback-Engines
+onnx-asr
+onnxruntime

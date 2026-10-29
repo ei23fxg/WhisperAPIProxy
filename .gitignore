@@ -5,3 +5,13 @@ recordings/
 api_tmp.wav
 config.py
 error.log
+# Docker-Daten
+data/
+
+# Docker-Bind-Mounts
+logs/
+recordings/
+client_logs/
+
+# lokal
+.env

@@ -1,0 +1,14 @@
+config.py
+.git
+.venv
+__pycache__
+*.pyc
+data
+recordings
+client_logs
+*.log
+api_tmp.wav
+*.wav
+*.opus
+.github
+.env

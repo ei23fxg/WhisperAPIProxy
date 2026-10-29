@@ -9,6 +9,8 @@ import threading
 import time
 from gradio_client import Client, handle_file
 from typing import Optional
+import parakeet_transcriber
+import whistle_transcriber
 
 ERROR_LOG_FILE = "error.log"
 
@@ -24,12 +26,23 @@ def log_error(client_id: str, error_message: str):
         print(f"Failed to write to error log: {e}")
 app = FastAPI()
 
+
+@app.get("/health")
+async def health():
+    """Unauthenticated liveness probe (Docker healthcheck)."""
+    return JSONResponse(content={"status": "ok"})
+
 # Script directory and fixed filename for the audio file
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 AUDIO_FILE_NAME = os.path.join(SCRIPT_DIR, "api_tmp.wav")
 
 # Global variable for the status of the local service
 local_service_available = False
+
+# Wie oft der Hintergrund-Thread die Whisper-WebUI prüft (Sekunden).
+# Damit ist auch die Umschaltzeit nach einem Ausfall begrenzt.
+LOCAL_CHECK_INTERVAL = int(getattr(config, "local_check_interval", 30))
+
 
 # Function to periodically check the local service
 def check_local_service():
@@ -40,10 +53,24 @@ def check_local_service():
             local_service_available = response.status_code == 200
         except requests.RequestException:
             local_service_available = False
-        time.sleep(30)  # Check every 30 seconds
+        time.sleep(LOCAL_CHECK_INTERVAL)
 
 # Start the background thread for checking
 threading.Thread(target=check_local_service, daemon=True).start()
+
+@app.on_event("startup")
+def warmup_local_engines():
+    """Lokale Fallback-Modelle im Hintergrund laden, damit das erste Diktat nicht wartet."""
+    if getattr(config, "whistle_enabled", True) and whistle_transcriber.available():
+        threading.Thread(target=whistle_transcriber.warmup, daemon=True).start()
+    if getattr(config, "parakeet_enabled", True) and parakeet_transcriber.available():
+        threading.Thread(
+            target=parakeet_transcriber.warmup,
+            args=(getattr(config, "parakeet_model", parakeet_transcriber.DEFAULT_MODEL),
+                  getattr(config, "parakeet_quantization", parakeet_transcriber.DEFAULT_QUANT)),
+            daemon=True,
+        ).start()
+
 
 # Function for transcription with the local service
 def get_transcript(audiofile, srt_format: bool):
@@ -84,6 +111,59 @@ def transcribe_with_openai(audio_file, model: str, client_id: str):
         log_error(client_id, f"Error with OpenAI API: {e}")
         print(f"Error with OpenAI API: {e}")
         return None
+
+def _run_local_engine(name: str, audio_file, srt: bool):
+    """Eine lokale Engine ausführen (Text oder SRT); None, wenn sie nicht kann."""
+    if name == "parakeet":
+        model = getattr(config, "parakeet_model", parakeet_transcriber.DEFAULT_MODEL)
+        quant = getattr(config, "parakeet_quantization", parakeet_transcriber.DEFAULT_QUANT)
+        if srt:
+            return parakeet_transcriber.transcribe_srt(audio_file, model, quant)
+        return parakeet_transcriber.transcribe(audio_file, model, quant)
+
+    if name == "whistle":
+        lang = getattr(config, "whistle_language", None)
+        if srt:
+            return whistle_transcriber.transcribe_srt(audio_file, language=lang)
+        return whistle_transcriber.transcribe(audio_file, language=lang)
+
+    return None
+
+
+def transcribe_with_local_fallback(audio_file, client_id: str, srt: bool = False):
+    """Lokale Fallbacks in konfigurierter Reihenfolge, bevor OpenAI genutzt wird.
+
+    `fallback_order` in config.py bestimmt die Reihenfolge, z. B.
+    ["parakeet", "whistle"]. Jede Engine kann mit `<name>_enabled = False`
+    abgeschaltet werden. Mit srt=True kommt SRT zurück (Wort-Zeitstempel).
+    """
+    order = getattr(config, "fallback_order", ["parakeet", "whistle"])
+    for name in order:
+        module = {"parakeet": parakeet_transcriber, "whistle": whistle_transcriber}.get(name)
+        if module is None:
+            log_error(client_id, f"Unbekannte Fallback-Engine: {name}")
+            continue
+        if not getattr(config, f"{name}_enabled", True):
+            continue
+        if not module.available():
+            continue
+
+        text = _run_local_engine(name, audio_file, srt)
+        if text:
+            print(f"{name}-Fallback für Client {client_id}")
+            return text
+        log_error(client_id, f"{name}-Fallback fehlgeschlagen: {module.load_error() or 'kein Text'}")
+
+    return None
+
+
+def save_transcript(save_recordings: bool, filename: str, transcription: str):
+    """Transkript neben der Aufnahme ablegen (wenn für den Client aktiviert)."""
+    if save_recordings:
+        path = os.path.join("recordings", f"{filename}.txt")
+        with open(path, "w") as text_file:
+            text_file.write(transcription)
+
 
 def get_audio_duration(file_path):
     audio = AudioSegment.from_file(file_path)
@@ -168,10 +248,16 @@ async def transcribe_audio(
             return JSONResponse({"text": f"{filename}.txt"})
 
     # Decide which service to use
+    global local_service_available
     if local_service_available:
         transcription = get_transcript(AUDIO_FILE_NAME, srt_format)
-        log_usage(client_id, audio_duration, "local")
+        if transcription is None:
+            # Dienst antwortet nicht mehr: sofort umschalten, nicht bis zum
+            # naechsten Poll-Tick warten. Der Hintergrund-Thread schaltet ihn
+            # wieder ein, sobald die WebUI zurueck ist.
+            local_service_available = False
         if transcription:
+            log_usage(client_id, audio_duration, "local")
             if save_recordings:
                 # Save the transcription
                 text_file_path = os.path.join(recordings_dir, f"{filename}.txt")
@@ -179,7 +265,14 @@ async def transcribe_audio(
                     text_file.write(transcription)
             return JSONResponse({"text": transcription})
         else:
-            # Fallback zu OpenAI
+            # Fallback: lokale Engines (Reihenfolge aus config.fallback_order)
+            transcription = transcribe_with_local_fallback(AUDIO_FILE_NAME, client_id, srt_format)
+            if transcription:
+                log_usage(client_id, audio_duration, "local")
+                save_transcript(save_recordings, filename, transcription)
+                return JSONResponse({"text": transcription})
+
+            # Fallback 2: OpenAI
             if allow_openai:
                 transcription = transcribe_with_openai(AUDIO_FILE_NAME, model, client_id)
                 log_usage(client_id, audio_duration, "openai")
@@ -199,7 +292,14 @@ async def transcribe_audio(
                     detail="OpenAI API usage is forbidden for this client",
                 )
     else:
-        # Local service not available, use OpenAI
+        # Fallback: lokale Engines (kein Netz, keine Kosten)
+        transcription = transcribe_with_local_fallback(AUDIO_FILE_NAME, client_id, srt_format)
+        if transcription:
+            log_usage(client_id, audio_duration, "local")
+            save_transcript(save_recordings, filename, transcription)
+            return JSONResponse({"text": transcription})
+
+        # Fallback 2: OpenAI
         if allow_openai:
             transcription = transcribe_with_openai(AUDIO_FILE_NAME, model, client_id)
             log_usage(client_id, audio_duration, "openai")
@@ -279,10 +379,14 @@ async def get_local_service_status(client_data: tuple = Depends(verify_api_key))
     # The verify_api_key dependency already handles authentication.
     # If the key is invalid, it will raise an HTTPException.
     # We just need to return the status of local_service_available.
+    engines = {
+        "whistle": whistle_transcriber.available(),
+        "parakeet": parakeet_transcriber.available(),
+    }
     if local_service_available:
-        return JSONResponse(content={"status": "available", "message": "Local transcription service is available."})
+        return JSONResponse(content={"status": "available", "message": "Local transcription service is available.", **engines})
     else:
-        return JSONResponse(content={"status": "unavailable", "message": "Local transcription service is currently unavailable."})
+        return JSONResponse(content={"status": "unavailable", "message": "Local transcription service is currently unavailable.", **engines})
     
 @app.get("/usage")
 async def get_usage_data():

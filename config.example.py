@@ -1,5 +1,25 @@
 whisper_webui_host = "http://localhost:7860/"
 
+# --- Lokale Fallback-Engines (CPU) -------------------------------------
+# Reihenfolge, in der lokale Engines probiert werden, bevor OpenAI genutzt
+# wird. Jede Engine lässt sich mit <name>_enabled = False abschalten.
+fallback_order = ["parakeet", "whistle"]
+
+# Parakeet TDT 0.6B v3: genauer bei Zahlen/Domains, ~640 MB int8.
+#   pip install onnx-asr onnxruntime
+parakeet_enabled = True
+parakeet_model = "nemo-parakeet-tdt-0.6b-v3"
+parakeet_quantization = "int8"
+
+# Whistle: 16,9 MB, sehr schnell, 7 Sprachen.
+#   pip install "cactus-needle[mic]"
+whistle_enabled = True
+whistle_language = None   # None = Spracherkennung automatisch, sonst z.B. "de"
+
+# Wie oft (Sekunden) die Whisper-WebUI im Hintergrund geprüft wird.
+# Bestimmt, wie lange die Rückkehr zu Whisper nach einem Ausfall dauert.
+local_check_interval = 30
+
 # OpenAI API key (hardcoded)
 openai_api_key = "sk-proj-XXXXXXXXXXXXXXXXXXx"  # Place your API KEY here
 # OpenAI WHISPER API URL

@@ -1,0 +1,71 @@
+# Whisper-API-Proxy mit lokalen Fallback-Engines
+#
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Aufnahmen und Logs liegen als normale Ordner neben dem Projekt und sind
+# direkt einsehbar. Die Modellgewichte liegen in benannten Volumes und
+# überleben `docker compose build` / `up --build`.
+
+services:
+  whisper-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Lokal gebaut: Default. Für GHCR in .env setzen:
+    #   PROXY_IMAGE=ghcr.io/ei23fxg/whisperapiproxy:latest
+    image: ${PROXY_IMAGE:-whisper-api-proxy:latest}
+    container_name: whisper-api-proxy
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 10s
+
+    ports:
+      - "5431:5431"
+
+    environment:
+      NEEDLE_TELEMETRY: "0"
+      TZ: Europe/Berlin
+
+    volumes:
+      # Konfiguration mit API-Keys (muss existieren)
+      - ./config.py:/app/config.py:ro
+      # Aufnahmen + Usage-Statistik: liegen sichtbar im Projektordner
+      - ./recordings:/app/recordings
+      - ./client_logs:/app/client_logs
+      # error.log
+      - proxy_logs:/app/logs
+      # Modellgewichte: benannte Volumes, bleiben bei Rebuilds erhalten.
+      # Alternativ als Bind-Mount, z. B.:
+      #   - ./models/hf:/root/.cache/huggingface
+      #   - ./models/cactus:/root/.cache/cactus-needle
+      - hf_cache:/root/.cache/huggingface
+      - cactus_cache:/root/.cache/cactus-needle
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          try:
+              with urllib.request.urlopen("http://127.0.0.1:5431/health", timeout=3) as r:
+                  sys.exit(0 if r.status == 200 else 1)
+          except Exception:
+              sys.exit(1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  proxy_logs:
+  hf_cache:
+  cactus_cache:
