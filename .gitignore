@@ -4,6 +4,8 @@ client_logs/
 recordings/
 api_tmp.wav
 config.py
+# Verzeichnis-Mount für config.py (wird beim ersten Start erzeugt)
+config/
 error.log
 # Docker-Daten
 data/

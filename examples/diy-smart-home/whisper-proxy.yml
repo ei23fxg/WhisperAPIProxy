@@ -1,0 +1,32 @@
+# Whisper-API-Proxy als Vorlage für das ei23 DIY Smart Home
+# https://github.com/ei23com/diy-smart-home
+#
+# Diese Datei ist ein Ausschnitt (kein vollständiges Compose-Projekt). Den
+# Block unter `services:` in ~/ei23-docker/docker-compose.yml einfügen, also
+# eingerückt direkt hinter die Zeile `services:`.
+#
+# Die Pfade sind relativ zu ~/ei23-docker. Beim ersten Start legt der Container
+# ./volumes/whisper-proxy/config/config.py selbst an (aus config.example.py).
+# Danach API-Keys/Clients anpassen und `ei23 dc` bzw. `docker compose up -d`
+# ausführen.
+
+  whisper-proxy:
+    image: ghcr.io/ei23fxg/whisperapiproxy
+    container_name: whisper-api-proxy
+    restart: unless-stopped
+    ports:
+      - "5431:5431"
+    environment:
+      NEEDLE_TELEMETRY: "0"
+      TZ: Europe/Berlin
+      # Verzeichnis-Mount: der Container schreibt die config.py beim ersten
+      # Start selbst. Ein Datei-Mount auf eine fehlende config.py legt Docker
+      # als Verzeichnis an und der Start schlägt fehl.
+      CONFIG_PATH: /app/config/config.py
+    volumes:
+      - ./volumes/whisper-proxy/config:/app/config
+      - ./volumes/whisper-proxy/recordings:/app/recordings
+      - ./volumes/whisper-proxy/client_logs:/app/client_logs
+      - ./volumes/whisper-proxy/proxy_logs:/app/logs
+      - ./volumes/whisper-proxy/models/hf:/root/.cache/huggingface
+      - ./volumes/whisper-proxy/models/cactus:/root/.cache/cactus-needle

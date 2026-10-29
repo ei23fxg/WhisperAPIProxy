@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydub import AudioSegment
-import config
+from config_loader import config
 import os
 import requests
 import threading

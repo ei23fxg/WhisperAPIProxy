@@ -1,3 +1,10 @@
+# Vorlage für config.py.
+#
+# Fehlt beim Containerstart eine config.py, kopiert docker-entrypoint.sh diese
+# Datei automatisch nach $CONFIG_PATH (Default: /app/config/config.py). Danach
+# die Keys/Clients anpassen und den Container neu starten
+# (docker compose restart whisper-proxy).
+
 whisper_webui_host = "http://localhost:7860/"
 
 # --- Lokale Fallback-Engines (CPU) -------------------------------------

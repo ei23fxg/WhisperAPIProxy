@@ -1,7 +1,11 @@
 # Whisper-API-Proxy mit lokalen Fallback-Engines
 #
-#   docker compose up -d --build
+#   docker compose up -d
 #   docker compose logs -f
+#
+# Eine config.py muss nicht vorbereitet werden: Fehlt sie, erzeugt der
+# Container beim ersten Start automatisch eine Standardkonfiguration aus
+# config.example.py unter ./config/config.py.
 #
 # Aufnahmen und Logs liegen als normale Ordner neben dem Projekt und sind
 # direkt einsehbar. Die Modellgewichte liegen in benannten Volumes und
@@ -26,10 +30,17 @@ services:
     environment:
       NEEDLE_TELEMETRY: "0"
       TZ: Europe/Berlin
+      # Konfiguration im Verzeichnis-Mount (wird beim ersten Start angelegt)
+      CONFIG_PATH: /app/config/config.py
 
     volumes:
-      # Konfiguration mit API-Keys (muss existieren)
-      - ./config.py:/app/config.py:ro
+      # Konfiguration: Verzeichnis-Mount, damit der Container die Datei beim
+      # ersten Start selbst anlegen kann. Ein Datei-Mount auf eine noch nicht
+      # existierende ./config.py würde von Docker als *Verzeichnis* angelegt
+      # und den Start blockieren.
+      - ./config:/app/config
+      # Wenn die config.py bereits existiert, geht alternativ auch:
+      #   - ./config.py:/app/config.py:ro
       # Aufnahmen + Usage-Statistik: liegen sichtbar im Projektordner
       - ./recordings:/app/recordings
       - ./client_logs:/app/client_logs

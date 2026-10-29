@@ -1,9 +1,12 @@
 # Whisper-API-Proxy mit lokalen Fallback-Engines (Parakeet/Whistle)
 FROM python:3.11-slim
 
+# Konfiguration liegt im (beschreibbaren) Verzeichnis-Mount; der Entrypoint
+# legt die Datei beim ersten Start aus config.example.py an.
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CONFIG_PATH=/app/config/config.py
 
 # ffmpeg: Opus-Archivierung, Audio-Normalisierung für die lokalen Engines,
 #         und das, was pydub ohnehin erwartet

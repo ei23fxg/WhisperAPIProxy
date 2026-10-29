@@ -3,7 +3,7 @@
     docker compose exec whisper-proxy python warmup_models.py
 """
 
-import config
+from config_loader import config
 import parakeet_transcriber
 import whistle_transcriber
 

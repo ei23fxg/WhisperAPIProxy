@@ -1,4 +1,5 @@
 config.py
+config/
 .git
 .venv
 __pycache__
