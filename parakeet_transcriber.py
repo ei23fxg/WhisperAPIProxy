@@ -15,7 +15,8 @@ import threading
 import audio_utils
 import srt_utils
 
-_lock = threading.Lock()
+_lock = threading.Lock()          # Transkription (onnxruntime-Session nicht parallel füttern)
+_load_lock = threading.Lock()     # Modellgewichte laden
 _model = None
 _load_error: str | None = None
 _import_checked = False
@@ -46,21 +47,32 @@ def _get_model(model_name: str, quant: str | None):
     global _model, _load_error
     if _model is not None:
         return _model
-    import onnx_asr
-    _model = onnx_asr.load_model(
-        model_name,
-        quantization=None if quant in (None, "", "fp32", "none") else quant,
-        providers=["CPUExecutionProvider"],
-    )
-    _load_error = None
-    return _model
+    with _load_lock:
+        if _model is not None:
+            return _model
+        import onnx_asr
+        _model = onnx_asr.load_model(
+            model_name,
+            quantization=None if quant in (None, "", "fp32", "none") else quant,
+            providers=["CPUExecutionProvider"],
+        )
+        _load_error = None
+        return _model
 
 
-def warmup(model_name: str = DEFAULT_MODEL, quant: str = DEFAULT_QUANT) -> None:
+def warmup(model_name: str = DEFAULT_MODEL, quant: str = DEFAULT_QUANT) -> bool:
+    """Modellgewichte jetzt laden, damit das erste Diktat nicht wartet.
+
+    Gibt ``True`` zurück, wenn das Modell geladen werden konnte.
+    """
+    global _load_error
     try:
         _get_model(model_name, quant)
-    except Exception as exc:  # noqa: BLE001
-        print(f"Parakeet-Warmup fehlgeschlagen: {exc}")
+        return True
+    except Exception as exc:  # noqa: BLE001 - Proxy darf daran nicht sterben
+        _load_error = str(exc)
+        print(f"Parakeet-Warmup fehlgeschlagen: {exc}", flush=True)
+        return False
 
 
 def _recognize(path: str, model_name: str, quant: str, with_timestamps: bool):

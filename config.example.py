@@ -27,6 +27,10 @@ whistle_language = None   # None = Spracherkennung automatisch, sonst z.B. "de"
 # Bestimmt, wie lange die Rückkehr zu Whisper nach einem Ausfall dauert.
 local_check_interval = 30
 
+# Lokale Modellgewichte beim Containerstart laden (blockierend), nicht erst
+# beim ersten Diktat. False = sofort starten und erst bei Bedarf laden.
+warmup_on_startup = True
+
 # OpenAI API key (hardcoded)
 openai_api_key = "sk-proj-XXXXXXXXXXXXXXXXXXx"  # Place your API KEY here
 # OpenAI WHISPER API URL

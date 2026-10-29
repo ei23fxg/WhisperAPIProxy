@@ -15,6 +15,7 @@ This project provides an (OpenAI-compatible) proxy API for audio transcriptions,
 *   **Audio Recording:** Saves audio recordings to the `recordings` directory (if enabled in the client configuration).
 *   **Opus Conversion:** Converts audio files to Opus format for storage.
 *   **Zero-config Docker start:** If no `config.py` exists, a default one is created automatically on first start.
+*   **Model warmup at startup:** Enabled local engines load their weights before the API accepts requests — no delay on the first transcription.
 *   **Ready for Home Assistant:** Works as a local STT backend via the OpenAI-compatible API, e.g. with [ha-openai-whisper-stt-api](https://github.com/fabio-garavini/ha-openai-whisper-stt-api).
 *   **ei23 DIY Smart Home:** A ready-to-use compose template is included in [`examples/diy-smart-home/`](examples/diy-smart-home/whisper-proxy.yml).
 
@@ -40,6 +41,9 @@ whistle_language = None   # None = auto-detect, otherwise e.g. "de"
 
 # Interval (seconds) at which the WebUI is checked (failover after an outage)
 local_check_interval = 30
+
+# Load the local model weights during startup instead of on the first request
+warmup_on_startup = True
 ```
 
 Installing the local engines:
@@ -170,12 +174,34 @@ already have the file as `./config.py`, simply move it to `./config/config.py`
 file). If an empty `./config.py` directory is left over from an earlier failed
 attempt (for ei23: `volumes/whisper-proxy/config.py`), delete it first.
 
-On first start the models are downloaded if needed (~660 MB). You can trigger
-that beforehand:
+### Startup and model warmup
+
+Enabled local engines load their weights during startup, before the API accepts
+requests. The first transcription therefore does not have to wait for a model
+download or session setup.
+
+- **First start:** downloads the weights (~660 MB for Parakeet + 16.9 MB for
+  Whistle) and can take several minutes. Watch the progress with
+  `docker compose logs -f`.
+- **Later starts:** load from the cache volumes (`hf_cache`, `cactus_cache`) and
+  are much faster.
+- **Failures do not abort startup:** if an engine cannot be loaded, the proxy
+  logs the error and keeps running with the remaining engines (and OpenAI if
+  allowed for the client).
+- **Disable blocking warmup** with `warmup_on_startup = False` in `config.py` if
+  you prefer a fast container start and lazy loading.
+
+The healthcheck in `docker-compose.yml` uses `start_period: 600s`, so the first
+start is not marked unhealthy while the weights are loading.
+
+To pre-download the weights without starting the service (for example before
+switching over), run the warmup in a one-off container:
 
 ```bash
-docker compose exec whisper-proxy python warmup_models.py
+docker compose run --rm whisper-proxy python warmup_models.py
 ```
+
+This fills the same cache volumes that the service uses.
 
 ### What is stored where
 
@@ -246,7 +272,7 @@ docker compose build --pull && docker compose up -d   # update
 docker compose down                  # stop (data is kept)
 ```
 
-- Healthcheck: `GET /health` (no API key) — for Docker only, returns `{"status":"ok"}`.
+- Healthcheck: `GET /health` (no API key) — for Docker only, returns `{"status":"ok"}`. The first start can take several minutes while the model weights load (`start_period: 600s`).
 - A single worker is hard-coded on purpose: models and state live in the process.
 - Port `5431` is published on all interfaces; restrict it with a firewall if
   needed.
@@ -306,7 +332,9 @@ docker restart whisper-api-proxy
 ```
 
 - The paths are relative to `~/ei23-docker`; `volumes/whisper-proxy/` grows by
-  the model weights (~660 MB) on first use.
+  the model weights (~660 MB) on first use. The enabled engines load their
+  weights during startup, so the first start takes longer; later starts read
+  them from the volumes.
 - Port `5431` is published so Home Assistant and other LAN clients can connect.
 - The GHCR package is private by default. If the pull fails, see
   [Pulling the image from GHCR](#pulling-the-image-from-ghcr) (`docker login ghcr.io`).
@@ -373,6 +401,7 @@ The project is configured using the `config.py` file. This file contains setting
 *   `whisper_webui_host`: The host address of the local [Whisper WebUI](https://github.com/jhj0517/Whisper-WebUI) service.
 *   `openai_api_key`: The API key for the OpenAI API.
 *   `api_clients`: A dictionary of API clients, with each client identified by a unique ID and configured with an API key and a flag to enable/disable saving recordings.
+*   `warmup_on_startup`: Load the weights of the enabled local engines during startup instead of on the first request (default `True`).
 
 In Docker, no manual setup is needed: if the file is missing, it is created from
 `config.example.py` on first start. Its location is `$CONFIG_PATH` (default

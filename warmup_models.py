@@ -1,6 +1,10 @@
-"""Lädt die lokalen Fallback-Modelle vor (z. B. nach dem ersten Start).
+"""Loads the local fallback model weights ahead of time.
 
-    docker compose exec whisper-proxy python warmup_models.py
+The proxy already does this during startup (see ``warmup_on_startup`` in
+config.py). This script is useful to pre-download the weights into the cache
+volumes without starting the service, e.g.:
+
+    docker compose run --rm whisper-proxy python warmup_models.py
 """
 
 from config_loader import config
@@ -8,26 +12,36 @@ import parakeet_transcriber
 import whistle_transcriber
 
 
-def main() -> None:
+def main() -> int:
+    ok = True
+
     if getattr(config, "parakeet_enabled", True):
         if parakeet_transcriber.available():
-            print("lade Parakeet (int8, CPU) …", flush=True)
-            parakeet_transcriber.warmup(
+            print("Loading Parakeet (int8, CPU) …", flush=True)
+            if parakeet_transcriber.warmup(
                 getattr(config, "parakeet_model", parakeet_transcriber.DEFAULT_MODEL),
                 getattr(config, "parakeet_quantization", parakeet_transcriber.DEFAULT_QUANT),
-            )
-            print("Parakeet bereit", flush=True)
+            ):
+                print("Parakeet ready", flush=True)
+            else:
+                ok = False
+                print("Parakeet failed to load", flush=True)
         else:
-            print("Parakeet übersprungen (onnx-asr fehlt)", flush=True)
+            print("Parakeet skipped (onnx-asr not installed)", flush=True)
 
     if getattr(config, "whistle_enabled", True):
         if whistle_transcriber.available():
-            print("lade Whistle …", flush=True)
-            whistle_transcriber.warmup()
-            print("Whistle bereit", flush=True)
+            print("Loading Whistle …", flush=True)
+            if whistle_transcriber.warmup():
+                print("Whistle ready", flush=True)
+            else:
+                ok = False
+                print("Whistle failed to load", flush=True)
         else:
-            print("Whistle übersprungen (cactus-needle fehlt)", flush=True)
+            print("Whistle skipped (cactus-needle not installed)", flush=True)
+
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

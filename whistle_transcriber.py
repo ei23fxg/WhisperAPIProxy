@@ -25,7 +25,8 @@ import threading
 import audio_utils
 import srt_utils
 
-_lock = threading.Lock()
+_lock = threading.Lock()          # Transkription (needle ist nicht threadsicher)
+_load_lock = threading.Lock()     # Modellgewichte laden
 _model = None
 _load_error: str | None = None
 _import_checked = False
@@ -33,12 +34,17 @@ _import_ok = False
 
 
 def available() -> bool:
-    """Ist `cactus-needle` installiert? (ohne das Modell zu laden)"""
+    """Ist `cactus-needle` mit Whistle-API installiert? (ohne das Modell zu laden)"""
     global _import_checked, _import_ok
     if not _import_checked:
         _import_checked = True
         try:
-            import needle  # noqa: F401
+            import needle
+            if not (hasattr(needle, "Whistle") or hasattr(needle, "transcribe")):
+                raise RuntimeError(
+                    "cactus-needle ist zu alt; bitte aktualisieren: "
+                    "pip install -U 'cactus-needle[mic]'"
+                )
             _import_ok = True
         except Exception as exc:  # ImportError oder kaputte Installation
             _import_ok = False
@@ -50,22 +56,38 @@ def load_error() -> str | None:
     return _load_error
 
 
-def warmup() -> None:
-    """Modell einmal laden, damit das erste Diktat nicht wartet."""
+def warmup() -> bool:
+    """Modellgewichte jetzt laden, damit das erste Diktat nicht wartet.
+
+    Gibt ``True`` zurück, wenn das Modell geladen werden konnte.
+    """
+    global _load_error
     try:
         _get_model()
+        return True
     except Exception as exc:  # noqa: BLE001 - Proxy darf daran nicht sterben
-        print(f"Whistle-Warmup fehlgeschlagen: {exc}")
+        _load_error = str(exc)
+        print(f"Whistle-Warmup fehlgeschlagen: {exc}", flush=True)
+        return False
 
 
 def _get_model():
     global _model, _load_error
     if _model is not None:
         return _model
-    import needle
-    _model = needle
-    _load_error = None
-    return _model
+    with _load_lock:
+        if _model is not None:
+            return _model
+        import needle
+        whistle_cls = getattr(needle, "Whistle", None)
+        if whistle_cls is not None:
+            # Whistle() lädt die .cact-Gewichte in den Speicher (needle >= 3).
+            _model = whistle_cls()
+        else:
+            # Ältere Builds laden das Modell beim ersten transcribe().
+            _model = needle
+        _load_error = None
+        return _model
 
 
 def _run(path: str, language: str | None, with_words: bool):

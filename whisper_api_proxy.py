@@ -60,16 +60,37 @@ threading.Thread(target=check_local_service, daemon=True).start()
 
 @app.on_event("startup")
 def warmup_local_engines():
-    """Lokale Fallback-Modelle im Hintergrund laden, damit das erste Diktat nicht wartet."""
-    if getattr(config, "whistle_enabled", True) and whistle_transcriber.available():
-        threading.Thread(target=whistle_transcriber.warmup, daemon=True).start()
-    if getattr(config, "parakeet_enabled", True) and parakeet_transcriber.available():
-        threading.Thread(
-            target=parakeet_transcriber.warmup,
-            args=(getattr(config, "parakeet_model", parakeet_transcriber.DEFAULT_MODEL),
-                  getattr(config, "parakeet_quantization", parakeet_transcriber.DEFAULT_QUANT)),
-            daemon=True,
-        ).start()
+    """Lokale Modellgewichte beim Start laden — blockierend, nicht beim ersten Diktat.
+
+    Dadurch ist die API erst erreichbar, wenn die Modelle im Speicher liegen.
+    Der erste Start dauert entsprechend länger (Download der Gewichte).
+    """
+    if not getattr(config, "warmup_on_startup", True):
+        print("Modell-Warmup beim Start deaktiviert (warmup_on_startup = False)", flush=True)
+        return
+
+    if getattr(config, "whistle_enabled", True):
+        if whistle_transcriber.available():
+            print("Whistle: lade Modellgewichte …", flush=True)
+            if whistle_transcriber.warmup():
+                print("Whistle: bereit", flush=True)
+            else:
+                print("Whistle: Laden fehlgeschlagen", flush=True)
+        else:
+            print("Whistle: übersprungen (nicht installiert)", flush=True)
+
+    if getattr(config, "parakeet_enabled", True):
+        if parakeet_transcriber.available():
+            print("Parakeet: lade Modellgewichte …", flush=True)
+            if parakeet_transcriber.warmup(
+                getattr(config, "parakeet_model", parakeet_transcriber.DEFAULT_MODEL),
+                getattr(config, "parakeet_quantization", parakeet_transcriber.DEFAULT_QUANT),
+            ):
+                print("Parakeet: bereit", flush=True)
+            else:
+                print("Parakeet: Laden fehlgeschlagen", flush=True)
+        else:
+            print("Parakeet: übersprungen (nicht installiert)", flush=True)
 
 
 # Function for transcription with the local service

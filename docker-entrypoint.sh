@@ -75,5 +75,11 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
   exit 0
 fi
 
+# Eigene Kommandos ermöglichen, z. B.:
+#   docker compose run --rm whisper-proxy python warmup_models.py
+if [[ $# -gt 0 ]]; then
+  exec "$@"
+fi
+
 exec uvicorn whisper_api_proxy:app \
      --host 0.0.0.0 --port "${PORT:-5431}" --workers 1 --proxy-headers
