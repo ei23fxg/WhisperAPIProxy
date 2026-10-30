@@ -31,9 +31,13 @@ local_check_interval = 30
 # beim ersten Diktat. False = sofort starten und erst bei Bedarf laden.
 warmup_on_startup = True
 
-# Uploads unter dieser Dauer (Sekunden) werden mit HTTP 400 abgelehnt, statt
-# sie an die Engines zu geben. 0.2 s filtert leere/Test-Aufnahmen; 0 = aus.
+# Uploads unter dieser Dauer (Sekunden) gelten als leer und werden nicht an
+# die Engines gegeben. 0.2 s filtert leere/Test-Aufnahmen; 0 = aus.
 min_audio_duration = 0.2
+
+# Leere/zu kurze Aufnahmen mit {"text": ""} beantworten (True, wie "nichts
+# erkannt") statt mit HTTP 400 (False).
+empty_audio_returns_empty_text = True
 
 # OpenAI API key (hardcoded)
 openai_api_key = "sk-proj-XXXXXXXXXXXXXXXXXXx"  # Place your API KEY here

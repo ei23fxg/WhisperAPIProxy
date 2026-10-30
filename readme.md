@@ -394,9 +394,10 @@ Notes:
 - **Healthcheck:** `curl http://<server-ip>:5431/health` returns
   `{"status":"ok"}` without an API key.
 - **Empty/too-short uploads:** clips shorter than `min_audio_duration` (default
-  0.2 s), empty uploads and unreadable audio are rejected with HTTP 400 and
-  logged. This prevents a misleading 403 when a test clip simply contains no
-  speech.
+  0.2 s) and empty uploads are answered with HTTP 200 and `{"text": ""}` (and
+  logged). Unreadable audio still returns 400. Set
+  `empty_audio_returns_empty_text = False` to get a 400 for empty/too-short
+  clips instead.
 
 ## Configuration
 
@@ -406,7 +407,8 @@ The project is configured using the `config.py` file. This file contains setting
 *   `openai_api_key`: The API key for the OpenAI API.
 *   `api_clients`: A dictionary of API clients, with each client identified by a unique ID and configured with an API key and a flag to enable/disable saving recordings.
 *   `warmup_on_startup`: Load the weights of the enabled local engines during startup instead of on the first request (default `True`).
-*   `min_audio_duration`: Uploads shorter than this many seconds are rejected with HTTP 400 instead of being sent to an engine (default `0.2`; `0` disables the check). Empty or unreadable uploads also return 400.
+*   `min_audio_duration`: Uploads shorter than this many seconds are treated as empty and are not sent to an engine (default `0.2`; `0` disables the check).
+*   `empty_audio_returns_empty_text`: Answer empty/too-short uploads with HTTP 200 and `{"text": ""}` (default `True`). Set to `False` to return HTTP 400 instead. Unreadable audio always returns 400.
 
 In Docker, no manual setup is needed: if the file is missing, it is created from
 `config.example.py` on first start. Its location is `$CONFIG_PATH` (default

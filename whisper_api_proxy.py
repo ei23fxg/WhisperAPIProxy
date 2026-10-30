@@ -244,11 +244,15 @@ async def transcribe_audio(
     timestamp = time.strftime("%Y-%m-%d_%H%M%S")
     filename = f"{client_id}_{timestamp}"
 
-    # Reject empty or too-short uploads before they are archived or sent to an
-    # engine. A 0.1 s test clip otherwise ends in a confusing 403 ("OpenAI
-    # forbidden") although there simply is no speech in it.
+    # Empty or too-short uploads (e.g. a 0.1 s test clip) contain no speech.
+    # By default answer like a normal "nothing recognised" result instead of a
+    # confusing 403/400; set empty_audio_returns_empty_text = False for a 400.
+    empty_returns_text = bool(getattr(config, "empty_audio_returns_empty_text", True))
+
     if os.path.getsize(AUDIO_FILE_NAME) == 0:
         log_error(client_id, "Empty audio upload")
+        if empty_returns_text:
+            return JSONResponse({"text": ""})
         raise HTTPException(status_code=400, detail="Empty audio upload")
 
     min_duration = float(getattr(config, "min_audio_duration", 0.2) or 0)
@@ -263,6 +267,8 @@ async def transcribe_audio(
             client_id,
             f"Audio too short: {audio_duration:.2f}s (minimum {min_duration:.2f}s)",
         )
+        if empty_returns_text:
+            return JSONResponse({"text": ""})
         raise HTTPException(
             status_code=400,
             detail=(
