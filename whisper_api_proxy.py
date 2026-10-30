@@ -244,23 +244,41 @@ async def transcribe_audio(
     timestamp = time.strftime("%Y-%m-%d_%H%M%S")
     filename = f"{client_id}_{timestamp}"
 
+    # Reject empty or too-short uploads before they are archived or sent to an
+    # engine. A 0.1 s test clip otherwise ends in a confusing 403 ("OpenAI
+    # forbidden") although there simply is no speech in it.
+    if os.path.getsize(AUDIO_FILE_NAME) == 0:
+        log_error(client_id, "Empty audio upload")
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+
+    min_duration = float(getattr(config, "min_audio_duration", 0.2) or 0)
+    try:
+        audio_duration = get_audio_duration(AUDIO_FILE_NAME)
+    except Exception as exc:  # noqa: BLE001 - kaputte/fehlende Audioformate
+        log_error(client_id, f"Unreadable audio file: {exc}")
+        raise HTTPException(status_code=400, detail="Unreadable audio file")
+
+    if audio_duration < min_duration:
+        log_error(
+            client_id,
+            f"Audio too short: {audio_duration:.2f}s (minimum {min_duration:.2f}s)",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Audio is empty or too short "
+                f"({audio_duration:.2f}s, minimum {min_duration:.2f}s)"
+            ),
+        )
+
     # Convert the audio file to Opus format and save the transcription (if enabled)
     if save_recordings:
         opus_file_path = os.path.join(recordings_dir, f"{filename}.opus")
         command = f"ffmpeg -y -i {AUDIO_FILE_NAME} -c:a libopus -b:a 20k -ac 1 {opus_file_path}"
         os.system(command)
 
-    # Calculate the usage time
-    audio_duration = get_audio_duration(AUDIO_FILE_NAME)
-
     # Check daily quota (None means unlimited, 0 means no quota)
     if daily_quota is not None and daily_quota == 0:
-        # Convert the audio file to Opus format and save it (if enabled)
-        if save_recordings:
-            opus_file_path = os.path.join(recordings_dir, f"{filename}.opus")
-            command = f"ffmpeg -y -i {AUDIO_FILE_NAME} -c:a libopus -b:a 20k -ac 1 {opus_file_path}"
-            os.system(command)
-        
         # Return the response directly without transcription
         # Return the filename instead of "Aufnahme gespeichert"
         if save_recordings:

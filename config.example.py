@@ -31,6 +31,10 @@ local_check_interval = 30
 # beim ersten Diktat. False = sofort starten und erst bei Bedarf laden.
 warmup_on_startup = True
 
+# Uploads unter dieser Dauer (Sekunden) werden mit HTTP 400 abgelehnt, statt
+# sie an die Engines zu geben. 0.2 s filtert leere/Test-Aufnahmen; 0 = aus.
+min_audio_duration = 0.2
+
 # OpenAI API key (hardcoded)
 openai_api_key = "sk-proj-XXXXXXXXXXXXXXXXXXx"  # Place your API KEY here
 # OpenAI WHISPER API URL
